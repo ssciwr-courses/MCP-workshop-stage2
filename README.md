@@ -27,7 +27,7 @@ Here, an MCP builds the foundation: It defines the API, executes the software, a
 - `outputs/`: generated summary CSV and plot files
 - `tests/`: unit tests for the processing/plotting script and the MCP server
 
-### Relevant content for stage 1 of the MCP
+### Relevant content for the MCP
 - `mcp_server/`: MCP server wrapping the script (see [MCP server](#mcp-server) below).
 
 ## Data processing order in the script

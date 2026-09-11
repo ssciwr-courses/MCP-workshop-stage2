@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Climate processing config",
+  "type": "object",
+  "required": ["input_csv", "date_column", "metrics", "plot", "summary"],
+  "additionalProperties": false,
+  "properties": {
+    "input_csv": { "type": "string", "minLength": 1 },
+    "date_column": { "type": "string", "minLength": 1 },
+    "metrics": {
+      "type": "object",
+      "required": ["temperature_c", "precipitation_mm"],
+      "additionalProperties": false,
+      "properties": {
+        "temperature_c": { "type": "string", "minLength": 1 },
+        "precipitation_mm": { "type": "string", "minLength": 1 }
+      }
+    },
+    "rolling_window_days": { "type": "integer", "minimum": 1 },
+    "plot": {
+      "type": "object",
+      "required": ["output_path"],
+      "additionalProperties": false,
+      "properties": {
+        "title": { "type": "string" },
+        "output_path": { "type": "string", "minLength": 1 },
+        "width": { "type": "number", "exclusiveMinimum": 0 },
+        "height": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["output_path"],
+      "additionalProperties": false,
+      "properties": {
+        "output_path": { "type": "string", "minLength": 1 }
+      }
+    },
+    "missing_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "temperature_c": { "enum": ["interpolate", "zero_fill", "drop", "fail"] },
+        "precipitation_mm": { "enum": ["interpolate", "zero_fill", "drop", "fail"] }
+      }
+    }
+  }
+}

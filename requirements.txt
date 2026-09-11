@@ -1,0 +1,5 @@
+jsonschema
+matplotlib
+pandas
+pyyaml
+mcp[cli]>=2.1.1,<3

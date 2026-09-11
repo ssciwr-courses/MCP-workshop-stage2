@@ -1,0 +1,16 @@
+input_csv: data/missing_climate.csv
+date_column: date
+metrics:
+  temperature_c: temperature_c
+  precipitation_mm: precipitation_mm
+missing_policy:
+  temperature_c: interpolate
+  precipitation_mm: zero_fill
+rolling_window_days: 7
+plot:
+  title: Missing Climate Trends
+  output_path: outputs/missing_climate_plot.png
+  width: 12
+  height: 7
+summary:
+  output_path: outputs/missing_climate_summary.csv

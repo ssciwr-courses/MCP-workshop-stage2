@@ -1,0 +1,13 @@
+input_csv: data/mock_climate.csv
+date_column: date
+metrics:
+  temperature_c: temperature_c
+  precipitation_mm: precipitation_mm
+rolling_window_days: 7
+plot:
+  title: Mock Climate Trends
+  output_path: outputs/climate_plot.png
+  width: 12
+  height: 7
+summary:
+  output_path: outputs/climate_summary.csv

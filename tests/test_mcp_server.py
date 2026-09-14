@@ -1,8 +1,10 @@
 import pytest
 
-from mcp_server import paths
+from mcp_server import dwd_client, paths
+from mcp_server.dwd_client import DwdFetchResult
 from mcp_server.paths import PathSecurityError
 from mcp_server.server import (
+    download_dwd_weather,
     get_config_schema,
     list_sample_data,
     process_climate_data,
@@ -130,3 +132,55 @@ def test_process_climate_data_accepts_missing_policy_from_config():
     # mock_climate.csv is complete, so 'fail' must still succeed
     report, _ = process_climate_data(config)
     assert "policy=fail" in report
+
+
+def _fake_dwd_result() -> DwdFetchResult:
+    import polars as pl
+
+    df = pl.DataFrame(
+        {
+            "date": ["2023-06-01", "2023-06-02"],
+            "temperature_c": [20.8, 16.7],
+            "precipitation_mm": [0.0, 1.2],
+            "humidity_pct": [46.0, 54.0],
+        }
+    )
+    return DwdFetchResult(
+        dataframe=df,
+        station_id="05906",
+        station_name="Mannheim",
+        station_state="Baden-Württemberg",
+        distance_km=14.57,
+    )
+
+
+def test_download_dwd_weather_saves_normalized_csv_under_data_root(tmp_path, monkeypatch):
+    monkeypatch.setattr(paths, "DATA_ROOT", tmp_path)
+    monkeypatch.setattr(dwd_client, "fetch_daily_weather", lambda *a, **kw: _fake_dwd_result())
+
+    result = download_dwd_weather(49.4093, 8.6939, "2023-06-01", "2023-06-02")
+
+    assert result["filename"] == "dwd_05906_2023-06-01_2023-06-02.csv"
+    assert result["rows"] == 2
+    assert result["station_id"] == "05906"
+    assert result["station_name"] == "Mannheim"
+    assert result["distance_km"] == 14.57
+
+    saved = tmp_path / result["filename"]
+    assert saved.is_file()
+    content = saved.read_text(encoding="utf-8")
+    assert "date,temperature_c,precipitation_mm,humidity_pct" in content
+    assert "2023-06-01,20.8,0.0,46.0" in content
+
+
+def test_download_dwd_weather_output_usable_as_input_csv(tmp_path, monkeypatch):
+    """The saved file must be readable by process_climate_data unmodified."""
+    monkeypatch.setattr(paths, "DATA_ROOT", tmp_path)
+    monkeypatch.setattr(paths, "OUTPUTS_ROOT", tmp_path / "outputs")
+    monkeypatch.setattr(dwd_client, "fetch_daily_weather", lambda *a, **kw: _fake_dwd_result())
+
+    downloaded = download_dwd_weather(49.4093, 8.6939, "2023-06-01", "2023-06-02")
+
+    config = _valid_config(input_csv=downloaded["filename"])
+    report, _ = process_climate_data(config)
+    assert "Processed 2 rows" in report

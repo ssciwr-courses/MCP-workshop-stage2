@@ -83,6 +83,7 @@ This provides the following tools to the agent:
 - `list_sample_data` — CSV files available under `data/`, with their column names
 - `validate_climate_config` — validate a config without running the pipeline
 - `process_climate_data` — run the pipeline on an inline config; returns a text report (row count, monthly summary table, data_quality, policy and aggregation) plus the rendered plot image
+- `download_dwd_weather` — fetch real daily weather from the DWD (Deutscher Wetterdienst) for a location and date range, and save it under `data/` (see [Downloading real DWD data](#downloading-real-dwd-data) below)
 
 ### New user workflow
 
@@ -198,6 +199,36 @@ args = []
 
 `tests/test_mcp_server.py` calls the tool functions directly (they stay plain, callable Python functions under the `@mcp.tool()` decorator) and covers the sandboxing rules above, including path-traversal attempts in `input_csv` and `output_path`. Run it with the rest of the suite via `python -m pytest`.
 
+## Downloading real DWD data
+
+Every other tool only reads from the mock CSVs already checked into `data/`. `download_dwd_weather` is the one exception: it fetches real daily weather from the [DWD (Deutscher Wetterdienst)](https://www.dwd.de/) Open Data service, via the [`wetterdienst`](https://pypi.org/project/wetterdienst/) package, for the station nearest to a `(latitude, longitude)` and date range.
+
+```
+download_dwd_weather(latitude=49.4093, longitude=8.6939, start_date="2023-06-01", end_date="2023-06-07")
+```
+
+returns which station the data actually came from (it is not always the geographically nearest one — a nearby station missing the requested parameters is skipped in favour of one that has them, so check `distance_km` before treating the result as local weather) and the filename it saved under `data/`:
+
+```json
+{
+  "filename": "dwd_05906_2023-06-01_2023-06-07.csv",
+  "rows": 7,
+  "station_id": "05906",
+  "station_name": "Mannheim",
+  "station_state": "Baden-Württemberg",
+  "distance_km": 14.57
+}
+```
+
+That file is written in the same schema as the mock CSVs (`date, temperature_c, precipitation_mm, humidity_pct`), so it can be passed straight to `process_climate_data` as `input_csv` — and shows up afterwards in `list_sample_data`, same as any other file under `data/`. Real station records have real gaps, so `missing_policy` (see below) applies to a DWD download exactly as it does to the mock data.
+
+This is also the one tool with real-world caveats worth knowing before using it in a workshop:
+- **It needs network access** to `opendata.dwd.de`, and fails with a `ValueError` (not a traceback) if that's unreachable.
+- **DWD's "recent" data lags a few days behind today.** An `end_date` in the last day or two often returns no rows — move it back and retry.
+- **`wetterdienst` is a heavy dependency** (pulls in `polars`, `pyarrow`, `aiohttp` and more), which measurably slows down `pip install -r requirements.txt`. Worth flagging before using this as a live, timed workshop exercise.
+
+`mcp_server/dwd_client.py` does the actual fetching and unit normalization (DWD's humidity comes back as a 0–1 fraction and is scaled to the 0–100 `humidity_pct` convention here); the network call is isolated in one function there (`_query_dwd`) so `tests/test_dwd_client.py` can exercise validation and normalization by substituting a small hand-built DataFrame, without depending on DWD being reachable when the test suite runs.
+
 ## Security
 
 Once a config can come from an agent rather than a human hand-writing YAML, every path and value in it is untrusted input. The server treats it that way:
@@ -207,6 +238,7 @@ Once a config can come from an agent rather than a human hand-writing YAML, ever
 - **Schema validation before execution** (`_schema_errors()` in `mcp_server/server.py`, reusing `config/schema.json`): the config is validated against the JSON Schema and rejected with the specific violations before the pipeline ever runs, rather than failing partway through or on bad assumptions.
 - **No subprocess / no shell**: the MCP server calls `process_climate.run_pipeline()` in-process as a plain Python function, not via `subprocess`/shell string-building. There's no command-line assembly for a malicious value to break out of.
 - **Config is inline JSON, not a file path**: the agent passes the config as structured data in the tool call, never a path to a config file on disk. This also means the agent — and by extension the LLM — never needs or gets to know the server's filesystem layout beyond what `list_sample_data`/`get_config_schema` deliberately expose.
+- **`download_dwd_weather`'s output stays inside the same sandbox**: it writes through `paths.new_data_csv_path()`, the same filename-only, resolve-under-`DATA_ROOT` guarantee `output_filename()` gives `process_climate_data`'s outputs. The tool does add a new *outbound* network call (to `opendata.dwd.de`) that nothing else here makes — see [Downloading real DWD data](#downloading-real-dwd-data) — but it opens no inbound listener and cannot be told to write anywhere outside `data/`.
 
 What this setup does *not* provide: authentication/authorization on the tool calls themselves, rate limiting, or resource limits (CPU/memory/time) on a pipeline run. That's acceptable for a local, single-user, stdio-transport example where the trust boundary is "whoever can spawn the server process" (i.e. you, or your agent running as you) — see the deployment notes below for what changes if that boundary moves.
 
@@ -214,7 +246,7 @@ What this setup does *not* provide: authentication/authorization on the tool cal
 
 ## MCP server deployment
 
-In this repo the server only runs as a **local stdio subprocess**: `mcp.run()` in `mcp_server/server.py` uses the default `"stdio"` transport, and `main()` takes no arguments to change that. The underlying `mcp` library also ships SSE and streamable-HTTP transports (`run_sse_async`, `run_streamable_http_async`), but this example does not wire them up — there is no network listener, no port, and nothing to expose accidentally.
+In this repo the server only runs as a **local stdio subprocess**: `mcp.run()` in `mcp_server/server.py` uses the default `"stdio"` transport, and `main()` takes no arguments to change that. The underlying `mcp` library also ships SSE and streamable-HTTP transports (`run_sse_async`, `run_streamable_http_async`), but this example does not wire them up — there is no network *listener*, no port, and nothing to expose accidentally. (`download_dwd_weather` does make an *outbound* HTTPS request to `opendata.dwd.de` when called — see [Downloading real DWD data](#downloading-real-dwd-data) — which is a different thing from the server accepting inbound connections; the "who can launch this process" trust boundary below is unchanged by it.)
 
 Consequences of the stdio model:
 - The server process is spawned and owned by whichever client starts it (Claude Code, VSCode, Pi, Vibe, Codex — see the registration snippets above), lives only as long as that client keeps it running, and is reachable only by that one client over its own stdin/stdout pipe. There is no separate "deploy the server somewhere" step for local use — registering it with a client *is* deployment.

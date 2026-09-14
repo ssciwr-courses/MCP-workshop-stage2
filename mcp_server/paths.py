@@ -58,3 +58,20 @@ def new_run_dir() -> Path:
     run_dir = OUTPUTS_ROOT / uuid.uuid4().hex[:12]
     run_dir.mkdir(parents=True, exist_ok=False)
     return run_dir
+
+
+def new_data_csv_path(filename: str) -> Path:
+    """Resolve a server-generated filename to a path under data/.
+
+    For tools (like download_dwd_weather) that fetch data at the caller's
+    request and save it for later use as input_csv. Only the filename portion
+    is honoured, mirroring output_filename's guarantee -- even though callers
+    here build the filename themselves rather than take one from a config,
+    the same defense-in-depth applies: nothing written through this function
+    can land outside DATA_ROOT.
+    """
+    filename = Path(filename).name
+    if not filename or filename in (".", ".."):
+        raise PathSecurityError(f"filename '{filename}' does not name a file")
+    DATA_ROOT.mkdir(parents=True, exist_ok=True)
+    return DATA_ROOT / filename

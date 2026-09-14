@@ -190,8 +190,8 @@ codex mcp add climate-example -- python -m mcp_server.server
 This writes to `~/.codex/config.toml` (or `.codex/config.toml` for a project-scoped, trusted-only registration); equivalently, you can add the entry there directly:
 ```toml
 [mcp_servers.climate-example]
-command = "<path-to-your-environment>"
-args = ["-m", "mcp_server.server"]
+command = "<path-to-your-environment>/climate-mcp-server"
+args = []
 ```
 
 ### Testing

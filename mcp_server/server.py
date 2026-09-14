@@ -148,6 +148,23 @@ def process_climate_data(config: dict[str, Any]) -> list[str | Image]:
     return [report, Image(path=str(plot_path), format="png")]
 
 
+@mcp.tool()
+def list_outputs() -> list[dict[str, Any]]:
+    """List all outputs from previous runs, with their run directory and filename.
+
+    Each run is a UUID-named directory created by process_climate_data.
+    Use a filename from here if you want to reference a previous result.
+    """
+    runs = []
+    for run_dir in sorted(paths.OUTPUTS_ROOT.glob("*")):
+        if run_dir.is_dir():
+            runs.append({
+                "run_id": run_dir.name,
+                "files": sorted(p.name for p in run_dir.iterdir()),
+            })
+    return runs
+
+
 def main() -> None:
     mcp.run()
 
